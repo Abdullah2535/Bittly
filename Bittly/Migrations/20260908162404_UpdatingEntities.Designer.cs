@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Bittly.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260901181553_InitialIdentitySchema")]
-    partial class InitialIdentitySchema
+    [Migration("20260908162404_UpdatingEntities")]
+    partial class UpdatingEntities
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -126,6 +126,39 @@ namespace Bittly.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Bittly.Models.Url", b =>
+                {
+                    b.Property<int>("UrlId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UrlId"));
+
+                    b.Property<DateTime>("ExiprationDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LongUrl")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("ShortUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("UrlId");
+
+                    b.HasIndex("ShortUrl")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Urls");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
                     b.Property<int>("Id")
@@ -227,6 +260,15 @@ namespace Bittly.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Bittly.Models.Url", b =>
+                {
+                    b.HasOne("Bittly.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>

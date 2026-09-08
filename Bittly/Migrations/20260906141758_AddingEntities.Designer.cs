@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Bittly.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260901181553_InitialIdentitySchema")]
-    partial class InitialIdentitySchema
+    [Migration("20260906141758_AddingEntities")]
+    partial class AddingEntities
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -126,6 +126,52 @@ namespace Bittly.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Bittly.Models.Url", b =>
+                {
+                    b.Property<int>("OriginalUrlId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OriginalUrlId"));
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("OriginalUrlId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("OriginalUrls");
+                });
+
+            modelBuilder.Entity("Bittly.Models.ShortUrl", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("OriginalUrlId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ShortenedUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OriginalUrlId")
+                        .IsUnique();
+
+                    b.ToTable("ShortUrls");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
                     b.Property<int>("Id")
@@ -229,6 +275,26 @@ namespace Bittly.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Bittly.Models.Url", b =>
+                {
+                    b.HasOne("Bittly.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Bittly.Models.ShortUrl", b =>
+                {
+                    b.HasOne("Bittly.Models.Url", "Url")
+                        .WithOne("ShortUrl")
+                        .HasForeignKey("Bittly.Models.ShortUrl", "OriginalUrlId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Url");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
                     b.HasOne("Bittly.Models.ApplicationRole", null)
@@ -277,6 +343,12 @@ namespace Bittly.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Bittly.Models.Url", b =>
+                {
+                    b.Navigation("ShortUrl")
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

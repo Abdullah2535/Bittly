@@ -1,5 +1,7 @@
 using Bittly.Configurations;
+using Bittly.Infrastructure;
 using Bittly.Models;
+using Bittly.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -46,6 +48,10 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
+// Program.cs
+builder.Services.AddScoped<IUrlService, UrlService>();
+// Program.cs
+builder.Services.AddScoped<IUrlRepository, UrlRepository>();
 
 var app = builder.Build();
 

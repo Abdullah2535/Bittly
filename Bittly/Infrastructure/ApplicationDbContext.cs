@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+﻿using Bittly.Models;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection.Emit;
 
-namespace Bittly.Models
+namespace Bittly.Infrastructure
 {
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser,ApplicationRole,int>
     {
@@ -9,19 +11,18 @@ namespace Bittly.Models
             : base(options)
         {
         }
-        public DbSet<OriginalUrl> OriginalUrls { get; set; }
-        public DbSet<ShortUrl> ShortUrls { get; set; }
+        public DbSet<Url> Urls { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
-            builder.Entity<OriginalUrl>()
-                .HasOne(o => o.ShortUrl)
-                .WithOne(s => s.OriginalUrl)
-                .HasForeignKey<ShortUrl>(s => s.OriginalUrlId);
-
-            builder.Entity<OriginalUrl>()
+            builder.Entity<Url>()
                 .HasOne<ApplicationUser>()
                 .WithMany()
-                .HasForeignKey(o => o.UserId);
+                .HasForeignKey(o => o.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+           builder.Entity<Url>()
+                    .HasIndex(u => u.ShortUrl)
+                    .IsUnique();
 
             base.OnModelCreating(builder);
         }
