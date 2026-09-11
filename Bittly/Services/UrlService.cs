@@ -91,20 +91,37 @@ namespace Bittly.Services
             // 4. Return just the string needed for the redirect
             return urlEntity.LongUrl;
         }
+        public async Task<ShortenUrlDto> GetUrlDetailsAsync(string shortUrl)
+        {
+            // Throwing an exception here allows global error handling in the API
+            var urlEntity = await _urlRepository.GetByShortUrlAsync(shortUrl) ?? throw new KeyNotFoundException("The requested short URL does not exist.");
 
-        //public async Task<IEnumerable<UrlResponseDto>> GetUserUrlsAsync(int userId)
-        //{
-        //    // Fetch entities
-        //    var urls = await _urlRepository.GetUrlsByUserIdAsync(userId);
+            // 3. Business Logic: Is it expired?
+            if (DateTime.UtcNow > urlEntity.ExiprationDate)
+            {
+                throw new InvalidOperationException("This link has expired.");
+            }
 
-        //    // Map entities to DTOs using LINQ
-        //    return urls.Select(u => new UrlResponseDto
-        //    {
-        //        LongUrl = u.LongUrl,
-        //        ShortUrl = u.ShortUrl,
-        //        ExpirationDate = u.ExiprationDate
-        //    });
-        //}
+            
+            return new ShortenUrlDto { Url = urlEntity.LongUrl, ShortUrl = urlEntity.ShortUrl , ExpirationDate = urlEntity.ExiprationDate.ToString("yyyy-MM-dd") };
+        }
+
+
+
+
+        public async Task<IEnumerable<ShortenUrlDto>> GetUserUrlsAsync(int userId)
+        {
+            // Fetch entities
+            var urls = await _urlRepository.GetUrlsByUserIdAsync(userId);
+
+            // Map entities to DTOs using LINQ
+            return urls.Select(u => new ShortenUrlDto
+            {
+                Url = u.LongUrl,
+                ShortUrl = u.ShortUrl,
+                ExpirationDate = u.ExiprationDate.ToString("yyyy-MM-dd")
+            });
+        }
 
         // A private helper method to generate a random 6-character string
         private string GenerateRandomShortCode()

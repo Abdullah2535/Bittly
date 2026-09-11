@@ -10,7 +10,10 @@ namespace Bittly.Services
         // For the redirect operation (returns the raw string if valid)
         Task<string> GetValidLongUrlAsync(string shortUrl);
 
-        // For a user's dashboard to see their links
-     //   Task<IEnumerable<UrlResponseDto>> GetUserUrlsAsync(int userId);
+        Task<ShortenUrlDto> GetUrlDetailsAsync(string shortUrl);
+
+
+        //For a user's dashboard to see their links
+          Task<IEnumerable<ShortenUrlDto>> GetUserUrlsAsync(int userId);
     }
 }

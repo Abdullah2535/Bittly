@@ -60,9 +60,43 @@ namespace Bittly.Controllers
         }
 
         [HttpGet("{shortCode}/details")]
-        public IActionResult GetUrlDetails(string shortCode)
+        public async Task <IActionResult> GetUrlDetails(string shortCode)
         {
-            return Ok();
+            var urlDetails = await _urlService.GetUrlDetailsAsync(shortCode);
+
+            return Ok(urlDetails);
         }
+
+        
+        [HttpGet("{shortCode}")] 
+        [AllowAnonymous] 
+        public async Task<IActionResult> RedirectToLongUrl(string shortCode)
+        {
+            try
+            {
+                string longUrl = await _urlService.GetValidLongUrlAsync(shortCode);
+
+                //  Issue the HTTP 302 Redirect to send the user's browser to the target
+                return Redirect(longUrl);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound("The requested link could not be found.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("{id}/links")]
+        public async Task<IActionResult> UserLinks(int id)
+        {
+            var links =await _urlService.GetUserUrlsAsync(id);
+            return Ok(links);
+        } 
+
+
+
     }
 }
