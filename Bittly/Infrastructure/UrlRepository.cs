@@ -28,9 +28,11 @@ namespace Bittly.Infrastructure
                 .ToListAsync();
         }
 
-        public async Task AddAsync(Url url)
+        public Task AddAsync(Url url)
         {
-            await _context.Urls.AddAsync(url);
+
+            _context.Urls.Add(url);
+            return Task.CompletedTask;
         }
 
         public Task UpdateAsync(Url url)
@@ -43,11 +45,6 @@ namespace Bittly.Infrastructure
         {
             _context.Urls.Remove(url);
             return Task.CompletedTask;
-        }
-
-        public async Task SaveChangesAsync()
-        {
-            await _context.SaveChangesAsync();
         }
     }
 }

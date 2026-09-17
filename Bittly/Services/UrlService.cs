@@ -1,4 +1,5 @@
-﻿using Bittly.Dtos;
+﻿using Bittly.Configurations;
+using Bittly.Dtos;
 using Bittly.Infrastructure;
 using Bittly.Models;
 using System.Globalization;
@@ -8,157 +9,150 @@ namespace Bittly.Services
     public class UrlService : IUrlService
     {
         private readonly IUrlRepository _urlRepository;
-        private const string Base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        private const int ShortCodeLength = 6;
+        private readonly IShortenerService _shortenerService;
 
-        public UrlService(IUrlRepository urlRepository)
+        private readonly IUnitOfWork _unitOfWork;
+
+
+        public UrlService(IUrlRepository urlRepository, IShortenerService shortener, IUnitOfWork unitOfWork)
         {
             _urlRepository = urlRepository;
+            _shortenerService = shortener;
+            _unitOfWork = unitOfWork;
         }
 
-        public async Task<ShortenUrlDto> CreateShortUrlAsync(string longUrl, int userId, string? customAlias = null, string? customExpiration = null)
+        public async Task<Result<ShortenUrlDto>> CreateShortUrlAsync(string longUrl, int userId, string? customAlias = null, string? customExpiration = null)
         {
-            string shortCode;
-
-            // 1. Handle Short Code Generation or Custom Alias
-            if (!string.IsNullOrWhiteSpace(customAlias))
+            // Handle Short Code Generation or Custom Alias
+            var shortCodeResult = await GetUniqueShortCodeAsync(customAlias);
+            if (shortCodeResult.IsFailure)
             {
-                // Business Rule: Check if the custom alias is already taken
-                var existingAlias = await _urlRepository.GetByShortUrlAsync(customAlias);
-                if (existingAlias != null)
-                {
-                    // We throw an exception so the controller can return a 409 Conflict
-                    throw new InvalidOperationException("This custom alias is already in use. Please choose another.");
-                }
-                shortCode = customAlias;
-            }
-            else
-            {
-                // Fall back to the random generator with the collision loop
-                bool isUnique = false;
-                do
-                {
-                    shortCode = GenerateRandomShortCode();
-                    var existingUrl = await _urlRepository.GetByShortUrlAsync(shortCode);
-                    if (existingUrl == null)
-                    {
-                        isUnique = true;
-                    }
-                } while (!isUnique);
+                return Result<ShortenUrlDto>.Failure(shortCodeResult.Error);
             }
 
-            // 2. Handle Expiration Date
+            string shortCode = shortCodeResult.Value!;
+
+            // Handle Expiration Date
             var (finalExpirationDate, formattedExpirationOutput) = ParseExpirationDate(customExpiration);
 
-            // 3. Save to Database
             var newUrl = new Url
             {
                 LongUrl = longUrl,
                 UserId = userId,
                 ShortUrl = shortCode,
-                ExiprationDate = finalExpirationDate
+                ExiprationDate = finalExpirationDate 
             };
 
             await _urlRepository.AddAsync(newUrl);
-            await _urlRepository.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
-            return new ShortenUrlDto
+            return Result<ShortenUrlDto>.Success(new ShortenUrlDto
             {
                 Url = newUrl.LongUrl,
                 ShortUrl = newUrl.ShortUrl,
                 ExpirationDate = formattedExpirationOutput
-            };
+            });
         }
-
-        public async Task<string> GetValidLongUrlAsync(string shortUrl)
+        public async Task<Result<string>> GetValidLongUrlAsync(string shortUrl)
         {
-            // 1. Fetch the entity
             var urlEntity = await _urlRepository.GetByShortUrlAsync(shortUrl);
 
-            // 2. Business Logic: Does it exist?
             if (urlEntity == null)
             {
-                // Throwing an exception here allows global error handling in the API
-                throw new KeyNotFoundException("The requested short URL does not exist.");
+                return Result<string>.Failure(Error.NotFound("Url.NotFound", "The requested short URL does not exist."));
             }
 
-            // 3. Business Logic: Is it expired?
             if (DateTime.UtcNow > urlEntity.ExiprationDate)
             {
-                throw new InvalidOperationException("This link has expired.");
+                return Result<string>.Failure(Error.Validation("Url.Expired", "This link has expired."));
             }
 
-            // 4. Return just the string needed for the redirect
-            return urlEntity.LongUrl;
+            return Result<string>.Success(urlEntity.LongUrl);
         }
-        public async Task<ShortenUrlDto> GetUrlDetailsAsync(string shortUrl)
-        {
-            // Throwing an exception here allows global error handling in the API
-            var urlEntity = await _urlRepository.GetByShortUrlAsync(shortUrl) ?? throw new KeyNotFoundException("The requested short URL does not exist.");
 
-            // 3. Business Logic: Is it expired?
+        public async Task<Result<ShortenUrlDto>> GetUrlDetailsAsync(string shortUrl)
+        {
+            var urlEntity = await _urlRepository.GetByShortUrlAsync(shortUrl);
+
+            if (urlEntity == null)
+            {
+                return Result<ShortenUrlDto>.Failure(Error.NotFound("Url.NotFound", "The requested short URL does not exist."));
+            }
+
             if (DateTime.UtcNow > urlEntity.ExiprationDate)
             {
-                throw new InvalidOperationException("This link has expired.");
+                return Result<ShortenUrlDto>.Failure(Error.Validation("Url.Expired", "This link has expired."));
             }
 
-            
-            return new ShortenUrlDto { Url = urlEntity.LongUrl, ShortUrl = urlEntity.ShortUrl , ExpirationDate = urlEntity.ExiprationDate.ToString("yyyy-MM-dd") };
+            return Result<ShortenUrlDto>.Success(new ShortenUrlDto
+            {
+                Url = urlEntity.LongUrl,
+                ShortUrl = urlEntity.ShortUrl,
+                ExpirationDate = urlEntity.ExiprationDate.ToString("yyyy-MM-dd")
+            });
         }
 
-
-
-
-        public async Task<IEnumerable<ShortenUrlDto>> GetUserUrlsAsync(int userId)
+        public async Task<Result<IEnumerable<ShortenUrlDto>>> GetUserUrlsAsync(int userId)
         {
-            // Fetch entities
             var urls = await _urlRepository.GetUrlsByUserIdAsync(userId);
 
-            // Map entities to DTOs using LINQ
-            return urls.Select(u => new ShortenUrlDto
+            var dtos = urls.Select(u => new ShortenUrlDto
             {
                 Url = u.LongUrl,
                 ShortUrl = u.ShortUrl,
                 ExpirationDate = u.ExiprationDate.ToString("yyyy-MM-dd")
             });
+
+            return Result<IEnumerable<ShortenUrlDto>>.Success(dtos);
         }
 
-        // A private helper method to generate a random 6-character string
-        private string GenerateRandomShortCode()
+
+        private async Task<Result<string>> GetUniqueShortCodeAsync(string? customAlias)
         {
-            var randomChars = new char[ShortCodeLength];
-            for (int i = 0; i < ShortCodeLength; i++)
+            // User provided a custom alias
+            if (!string.IsNullOrWhiteSpace(customAlias))
             {
-                // Select a random character from the 62 available options
-                randomChars[i] = Base62Chars[Random.Shared.Next(Base62Chars.Length)];
+                var existingAlias = await _urlRepository.GetByShortUrlAsync(customAlias);
+                if (existingAlias != null)
+                {
+                    return Result<string>.Failure(
+                        Error.Conflict("Url.AliasTaken", "This custom alias is already in use. Please choose another."));
+                }
+
+                return Result<string>.Success(customAlias);
             }
-            return new string(randomChars);
+
+            //  Generate a random short code
+            const int MaxAttempts = 5;
+
+            for (int attempt = 1; attempt <= MaxAttempts; attempt++)
+            {
+                string shortCode = _shortenerService.GenerateRandomShortCode();
+                var existingUrl = await _urlRepository.GetByShortUrlAsync(shortCode);
+
+                if (existingUrl == null)
+                {
+                    return Result<string>.Success(shortCode);
+                }
+            }
+
+            return Result<string>.Failure(
+                Error.Failure("Url.GenerationFailed", "Failed to generate a unique short code after maximum attempts."));
         }
 
-        private (DateTime Date, string FormattedString) ParseExpirationDate(string? expirationDate)
+ 
+        private (DateTime Date, string FormattedString) ParseExpirationDate(string? validExpirationDate)
         {
-            // Guard Clause 1: If it's empty, return the defaults immediately and exit.
-            if (string.IsNullOrWhiteSpace(expirationDate))
+            // 1. Handle Default 30-day scenario
+            if (string.IsNullOrWhiteSpace(validExpirationDate))
             {
                 return (DateTime.UtcNow.AddDays(30), "The Link will Last for 30 days");
             }
 
-            // Guard Clause 2: If parsing fails, throw immediately and exit.
-            if (!DateTime.TryParseExact(expirationDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate))
-            {
-                throw new ArgumentException("Invalid date format. Please use exactly YYYY-MM-DD (e.g., 2026-12-31).");
-            }
+            // 2. Transform the guaranteed valid string into our UTC end-of-day DateTime
+            var parsedDate = DateOnly.ParseExact(validExpirationDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+            DateTime finalDate = parsedDate.ToDateTime(new TimeOnly(23, 59, 59), DateTimeKind.Utc);
 
-            // Process the valid date
-            DateTime finalDate = parsedDate.Date.AddDays(1).AddTicks(-1);
-
-            // Guard Clause 3: If it's in the past, throw immediately.
-            if (finalDate <= DateTime.UtcNow)
-            {
-                throw new ArgumentException("Expiration date must be in the future.");
-            }
-
-            // The end result.
             return (finalDate, finalDate.ToString("yyyy-MM-dd"));
         }
     }

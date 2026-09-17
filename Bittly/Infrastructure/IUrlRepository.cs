@@ -10,6 +10,5 @@ namespace Bittly.Infrastructure
         Task AddAsync(Url url);
         Task UpdateAsync(Url url);
         Task DeleteAsync(Url url);
-        Task SaveChangesAsync(); 
     }
 }

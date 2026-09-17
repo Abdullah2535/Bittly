@@ -1,5 +1,6 @@
 ﻿using Bittly.Models;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 
 namespace Bittly.Configurations
 {
@@ -9,7 +10,8 @@ namespace Bittly.Configurations
         {
             // 1. Resolve the managers
             var roleManager = serviceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
-            var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>(); 
+            var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var configuration = serviceProvider.GetRequiredService<IConfiguration>();
 
             // 2. Define the default roles
             string[] roles = { "Admin", "User"};
@@ -38,8 +40,14 @@ namespace Bittly.Configurations
             
                 };
 
-                // Note: In production, load this password from environment variables or Key Vault
-                var result = await userManager.CreateAsync(adminUser, "Hunter_25");
+                var adminPassword = configuration["AdminSettings:DefaultPassword"];
+
+                if (string.IsNullOrEmpty(adminPassword))
+                {
+                    Console.WriteLine(" Warning: Admin password not found in configuration. Admin user was not created.");
+                    return; // Stop execution if we don't have a secure password
+                }
+                var result = await userManager.CreateAsync(adminUser, adminPassword);
 
                 if (result.Succeeded)
                 {

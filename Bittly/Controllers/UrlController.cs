@@ -1,8 +1,8 @@
-﻿using Bittly.Dtos;
-using Bittly.Models;
+﻿using Bittly.Configurations;
+using Bittly.Dtos;
 using Bittly.Services;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -11,92 +11,93 @@ namespace Bittly.Controllers
     [Authorize]
     [Route("api/[controller]")]
     [ApiController]
-    public class UrlController : ControllerBase
+    public class UrlController : ApiControllerBase
     {
         private readonly IUrlService _urlService;
+        private readonly IValidator<ShortenUrlDto> _validator;
 
-        // The IUrlService is injected via Dependency Injection
-        public UrlController (IUrlService urlService)
+        public UrlController(IUrlService urlService, IValidator<ShortenUrlDto> validator)
         {
             _urlService = urlService;
+            _validator = validator;
         }
-        [HttpPost("shorten")]
-        public async Task<IActionResult> CreateShortUrl([FromBody] ShortenUrlDto request)
-        {
 
+        [HttpPost("shorten")]
+        public async Task<IActionResult> CreateShortUrl([FromBody] ShortenUrlDto request, CancellationToken ct)
+        {
+            var validationResult = await _validator.ValidateAsync(request, ct);
+
+            if (!validationResult.IsValid)
+            {
+                var firstError = validationResult.Errors.First();
+                var validationError = Error.Validation("Request.ValidationFailed", firstError.ErrorMessage);
+
+                return HandleFailure(validationError); 
+            }
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            // 2. Safely parse the ID (assuming your database uses integers)
             if (!int.TryParse(userIdString, out int userId))
             {
                 return Unauthorized(new { message = "Invalid token or missing user identity." });
             }
-            try
-            {
-                // Pass the optional fields down to the service
-                ShortenUrlDto result = await _urlService.CreateShortUrlAsync(
-                    request.Url,
-                    userId,
-                    request.ShortUrl,
-                    request.ExpirationDate
-                );
 
-                return CreatedAtAction(nameof(GetUrlDetails), new { shortCode = result.ShortUrl }, result);
-            }
-            catch (InvalidOperationException ex)
+         
+            Result<ShortenUrlDto> result = await _urlService.CreateShortUrlAsync(
+                request.Url,
+                userId,
+                request.ShortUrl,
+                request.ExpirationDate
+            );
+
+            if (result.IsFailure)
             {
-                // Catches the "Alias already in use" exception and returns HTTP 409 Conflict
-                return Conflict(new { message = ex.Message });
+                return HandleFailure(result.Error);
             }
-            catch (ArgumentException ex)
-            {
-                // Catches the "Expiration date must be in the future" exception and returns HTTP 400 Bad Request
-                return BadRequest(new { message = ex.Message });
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, "An error occurred while generating the short link.");
-            }
+
+            return CreatedAtAction(nameof(GetUrlDetails), new { shortCode = result.Value!.ShortUrl }, result.Value);
         }
 
         [HttpGet("{shortCode}/details")]
-        public async Task <IActionResult> GetUrlDetails(string shortCode)
+        public async Task<IActionResult> GetUrlDetails(string shortCode)
         {
-            var urlDetails = await _urlService.GetUrlDetailsAsync(shortCode);
+            var result = await _urlService.GetUrlDetailsAsync(shortCode);
 
-            return Ok(urlDetails);
+            if (result.IsFailure)
+            {
+                return HandleFailure(result.Error);
+            }
+
+            return Ok(result.Value);
         }
 
-        
-        [HttpGet("{shortCode}")] 
-        [AllowAnonymous] 
+        [HttpGet("{shortCode}")]
+        [AllowAnonymous]
         public async Task<IActionResult> RedirectToLongUrl(string shortCode)
         {
-            try
-            {
-                string longUrl = await _urlService.GetValidLongUrlAsync(shortCode);
+            var result = await _urlService.GetValidLongUrlAsync(shortCode);
 
-                //  Issue the HTTP 302 Redirect to send the user's browser to the target
-                return Redirect(longUrl);
-            }
-            catch (KeyNotFoundException)
+            if (result.IsFailure)
             {
-                return NotFound("The requested link could not be found.");
+                // return the 404 or 400 smoothly
+                return HandleFailure(result.Error);
             }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(ex.Message);
-            }
+
+            return Redirect(result.Value!);
         }
 
         [HttpGet("{id}/links")]
         public async Task<IActionResult> UserLinks(int id)
         {
-            var links =await _urlService.GetUserUrlsAsync(id);
-            return Ok(links);
-        } 
+            var result = await _urlService.GetUserUrlsAsync(id);
 
+            if (result.IsFailure)
+            {
+                return HandleFailure(result.Error);
+            }
 
+            return Ok(result.Value);
+        }
 
+      
     }
 }

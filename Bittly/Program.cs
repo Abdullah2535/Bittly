@@ -1,24 +1,29 @@
 using Bittly.Configurations;
 using Bittly.Infrastructure;
+using Bittly.Middelware;
 using Bittly.Models;
 using Bittly.Services;
+using Bittly.Validators;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using FluentValidation;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+
+builder.Host.UseSerilog((context, configuration) =>
+    configuration.ReadFrom.Configuration(context.Configuration));
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 
-
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-// Notice we use ApplicationUser 
 builder.Services.AddIdentity<ApplicationUser, ApplicationRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
@@ -48,12 +53,19 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
-// Program.cs
+
+builder.Services.AddValidatorsFromAssemblyContaining<ShortenUrlDtoValidator>();
 builder.Services.AddScoped<IUrlService, UrlService>();
-// Program.cs
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IUrlRepository, UrlRepository>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IShortenerService,ShortenerService>();
+
+
 
 var app = builder.Build();
+
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 // SEEDING LOGIC
 using (var scope = app.Services.CreateScope())
@@ -75,6 +87,8 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+app.UseSerilogRequestLogging();
 
 app.UseHttpsRedirection();
 
