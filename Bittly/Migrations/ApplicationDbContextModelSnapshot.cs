@@ -141,7 +141,8 @@ namespace Bittly.Migrations
 
                     b.Property<string>("ShortUrl")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
